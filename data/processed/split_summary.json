@@ -1,0 +1,67 @@
+{
+  "train": {
+    "rows": 8000,
+    "treatment_rate": 0.4989,
+    "retention_rate": 0.6889
+  },
+  "test": {
+    "rows": 2000,
+    "treatment_rate": 0.499,
+    "retention_rate": 0.6885
+  },
+  "scaled_columns": [
+    "CreditScore",
+    "Age",
+    "Tenure",
+    "Balance",
+    "NumOfProducts",
+    "EstimatedSalary",
+    "engagement_score",
+    "login_frequency",
+    "purchase_count",
+    "support_tickets"
+  ],
+  "binary_columns_skipped": [
+    "Gender",
+    "HasCrCard",
+    "IsActiveMember",
+    "previous_campaign_response",
+    "treatment",
+    "Geography_Germany",
+    "Geography_Spain"
+  ],
+  "key_feature_means": {
+    "Age": {
+      "train_mean": 0.0,
+      "test_mean": 0.0138
+    },
+    "CreditScore": {
+      "train_mean": 0.0,
+      "test_mean": 0.019
+    },
+    "Balance": {
+      "train_mean": 0.0,
+      "test_mean": 0.0109
+    },
+    "Tenure": {
+      "train_mean": 0.0,
+      "test_mean": -0.0075
+    },
+    "engagement_score": {
+      "train_mean": 0.0,
+      "test_mean": -0.0047
+    },
+    "login_frequency": {
+      "train_mean": 0.0,
+      "test_mean": -0.0108
+    },
+    "purchase_count": {
+      "train_mean": -0.0,
+      "test_mean": 0.0055
+    },
+    "support_tickets": {
+      "train_mean": -0.0,
+      "test_mean": 0.0022
+    }
+  }
+}
