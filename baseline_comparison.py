@@ -1,27 +1,7 @@
 """
 Uplift-based targeting vs TRADITIONAL (non-uplift) targeting.
 
-Question answered: if we can only contact the top X% of customers, does ranking
-them by predicted UPLIFT retain more customers than ranking them by predicted
-CHURN RISK (the conventional approach)?
-
-How the comparison is kept fair
--------------------------------
-- Same 10,000 customers, each scored out-of-fold (never by a model that saw them).
-- Same folds (cross_validate.make_folds) and same per-fold scaling.
-- Same features (everything except `treatment`).
-- Same yardstick: incremental retained customers, estimated from the randomized
-  treated-vs-control gap among the customers each strategy would contact
-  (uplift_metrics.uplift_curve).
-- Same budgets, and the same resampled customers for every bootstrap draw.
-
-Definition of "traditional targeting" (edit BASELINE_* below if the team defines it differently)
-------------------------------------------------------------------------------------------------
-Contact the customers with the HIGHEST predicted probability of churning:
-  churn_risk = 1 - P(retained | features)
-from a single Logistic Regression that ignores the treatment flag. This is what a
-team without an experiment would build. A second variant, trained on control
-customers only (a "pure" no-outreach risk model), is reported as a sensitivity check.
+If we can only contact the top X% of customers, does ranking them by predicted UPLIFT retain more customers than ranking them by predicted CHURN RISK (the conventional approach)?
 
 Outputs (outputs/):
   baseline_comparison.csv        incremental retained by budget, per strategy

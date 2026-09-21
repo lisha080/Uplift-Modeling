@@ -1,16 +1,8 @@
 """
 Shared uplift metrics.
 
-Everything here evaluates a model against OBSERVED outcomes. This works because
-the data comes from a randomized experiment (treatment assigned 50/50 at random),
-so within any group of customers:
+Observed uplift = retention rate (treated) - retention rate (control)
 
-    observed uplift = retention rate (treated) - retention rate (control)
-
-is an unbiased estimate of the true incremental effect of outreach for that group.
-
-Conventions
------------
 - outcome: 1 = retained, 0 = churned (higher is better)
 - treatment: 1 = received outreach, 0 = control
 - quintile 0 = LOWEST predicted uplift, quintile 4 = HIGHEST predicted uplift
@@ -23,18 +15,12 @@ N_QUINTILES = 5
 
 
 def assign_quintiles(score, n_groups=N_QUINTILES):
-    """Rank-based grouping: 0 = lowest score, n_groups-1 = highest.
-
-    Uses ranks (not value cut-points) so tied scores can never collapse
-    groups, and every group has the same size (+/- 1 customer).
-    """
     score = np.asarray(score)
     ranks = np.argsort(np.argsort(score, kind="stable"), kind="stable")
     return (ranks * n_groups // len(score)).astype(int)
 
 
 def observed_uplift(treatment, outcome):
-    """Retention(treated) - retention(control). NaN if either arm is empty."""
     t = np.asarray(treatment)
     o = np.asarray(outcome)
     if (t == 1).sum() == 0 or (t == 0).sum() == 0:
@@ -43,7 +29,6 @@ def observed_uplift(treatment, outcome):
 
 
 def quintile_table(score, treatment, outcome):
-    """Per-quintile predicted vs observed uplift (the key model-quality table)."""
     s, t, o = np.asarray(score), np.asarray(treatment), np.asarray(outcome)
     q = assign_quintiles(s)
     rows = []
@@ -64,16 +49,6 @@ def quintile_table(score, treatment, outcome):
 
 
 def uplift_curve(score, treatment, outcome, n_points=100):
-    """Incremental retained customers if we contact only the top x% by score.
-
-    For each budget x (1%..100% of customers) we take the top-x% ranked by
-    predicted uplift and estimate the extra retained customers caused by outreach:
-
-        (retention_treated - retention_control) * (number of customers targeted)
-
-    Returns (fractions, incremental_retained). The last point equals the
-    average treatment effect applied to everyone.
-    """
     s, t, o = np.asarray(score), np.asarray(treatment), np.asarray(outcome)
     order = np.argsort(-s, kind="stable")
     t, o = t[order], o[order]
@@ -95,13 +70,6 @@ def uplift_curve(score, treatment, outcome, n_points=100):
 
 
 def auuc_per_1000(score, treatment, outcome):
-    """Area between the model's uplift curve and random targeting.
-
-    Read as: on average across budgets, how many EXTRA incremental retained
-    customers per 1,000 customers does this ranking deliver versus picking
-    customers at random. Higher is better. Scaled per 1,000 customers so it is
-    comparable between the 2,000-row holdout and the 10,000-row cross-validation.
-    """
     fracs, inc = uplift_curve(score, treatment, outcome)
     random_line = fracs * inc[-1]
     n = len(score)
@@ -109,23 +77,18 @@ def auuc_per_1000(score, treatment, outcome):
 
 
 def incremental_per_1000_at(score, treatment, outcome, budget):
-    """Incremental retained customers per 1,000 customers if the top `budget`
-    fraction (e.g. 0.2) is contacted."""
     fracs, inc = uplift_curve(score, treatment, outcome)
     idx = int(round(budget * len(fracs))) - 1
     return float(inc[idx] / len(score) * 1000)
 
 
 def predicted_quintile_spread(score):
-    """Old-style metric: gap in mean PREDICTED uplift between top and bottom
-    quintile. Only describes the model's own scores, not real outcomes."""
     s = np.asarray(score)
     q = assign_quintiles(s)
     return float(s[q == N_QUINTILES - 1].mean() - s[q == 0].mean())
 
 
 def core_metrics(score, treatment, outcome):
-    """The outcome-based metrics used for model comparison."""
     s, t, o = np.asarray(score), np.asarray(treatment), np.asarray(outcome)
     q = assign_quintiles(s)
     top = observed_uplift(t[q == N_QUINTILES - 1], o[q == N_QUINTILES - 1])
@@ -141,14 +104,6 @@ def core_metrics(score, treatment, outcome):
 
 
 def paired_bootstrap(scores_by_model, treatment, outcome, n_boot=1000, seed=42):
-    """Resample customers (same resample for every model) and recompute metrics.
-
-    Pairing matters: both models are judged on the same resampled customers, so
-    the difference between them is much less noisy than comparing two
-    independent estimates.
-
-    Returns {model_name: {metric: array of n_boot draws}}.
-    """
     rng = np.random.default_rng(seed)
     t_all, o_all = np.asarray(treatment), np.asarray(outcome)
     n = len(t_all)
@@ -167,6 +122,5 @@ def paired_bootstrap(scores_by_model, treatment, outcome, n_boot=1000, seed=42):
 
 
 def ci95(draws):
-    """95% percentile interval, ignoring the (very rare) NaN draws."""
     lo, hi = np.nanpercentile(draws, [2.5, 97.5])
     return float(lo), float(hi)
