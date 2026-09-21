@@ -30,6 +30,11 @@ def main():
     X_train = X_train.copy()
     X_test = X_test.copy()
 
+    # Keep an UNSCALED copy of the test features. The index here is the original
+    # customer row id, so predictions can be joined back to the source data and
+    # segment analysis can use real values (Age = 45, not Age = 0.6).
+    X_test_raw = X_test.copy()
+
     print(f"\nTrain: {len(X_train)} rows, Test: {len(X_test)} rows")
 
     # Verify distributions across splits
@@ -68,6 +73,7 @@ def main():
 
     X_train.to_csv(OUTPUT_DIR / "X_train.csv", index=False)
     X_test.to_csv(OUTPUT_DIR / "X_test.csv", index=False)
+    X_test_raw.to_csv(OUTPUT_DIR / "X_test_unscaled.csv", index=True, index_label="customer_id")
     pd.DataFrame({target_col: y_train.values}).to_csv(OUTPUT_DIR / "y_train.csv", index=False)
     pd.DataFrame({target_col: y_test.values}).to_csv(OUTPUT_DIR / "y_test.csv", index=False)
 
@@ -88,7 +94,7 @@ def main():
     with open(OUTPUT_DIR / "split_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\nSaved: X_train.csv, X_test.csv, y_train.csv, y_test.csv, split_summary.json")
+    print(f"\nSaved: X_train.csv, X_test.csv, X_test_unscaled.csv, y_train.csv, y_test.csv, split_summary.json")
 
 
 if __name__ == "__main__":
