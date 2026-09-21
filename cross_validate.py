@@ -1,19 +1,13 @@
 """
 Out-of-fold (OOF) uplift predictions for ALL customers.
 
-Why: the 2,000-row holdout gives ~200 treated + ~200 control customers per
-quintile, which is too noisy to tell two similar models apart. With 5-fold
-cross-validation every one of the 10,000 customers gets an uplift score from a
-model that never saw that customer, so evaluation uses 5x more data.
-
 How each fold works:
   1. Split customers 80/20, stratified on treatment x outcome.
-  2. Fit the StandardScaler on the 80% only (never on the held-out 20%).
+  2. Fit on the 80% only (never on the held-out 20%).
   3. Train the T-Learner (same models / hyperparameters as train_models.py).
   4. Score the held-out 20%.
 
 Output per model: outputs/<model_name>/oof_predictions.csv
-(same columns as predictions.csv, plus `fold`, with unscaled segment columns)
 """
 
 import contextlib
