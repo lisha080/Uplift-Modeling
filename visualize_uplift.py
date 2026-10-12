@@ -10,6 +10,22 @@ from train_models import OUTPUT_DIR
 
 RANK_DIR = OUTPUT_DIR / "ranking"
 OUT_PATH = OUTPUT_DIR / "charts" / "uplift_charts.html"
+FINAL_PATH = OUTPUT_DIR / "final_model" / "oof_predictions.csv"
+SHAP_PATH = OUTPUT_DIR / "shap" / "feature_importance.csv"
+
+# Plain-language meaning of each SHAP factor, used when the model's direction matches
+INSIGHTS = {
+    ("IsActiveMember", "No"): ("Inactive members gain the most from outreach.",
+                               "A message aimed at getting them active again is likely to work well."),
+    ("previous_campaign_response", "Yes"): ("Customers who responded to a past campaign tend to respond again.",
+                                            "They are worth contacting."),
+    ("engagement_score", "Lower"): ("Customers with low engagement benefit more.",
+                                    "They are drifting away, and contact can bring them back."),
+    ("NumOfProducts", "Lower"): ("Customers with fewer products benefit more.",
+                                 "Customers who already hold several products gain little from outreach."),
+    ("Age", "Higher"): ("Older customers respond better to outreach than younger ones.", ""),
+    ("Geography_Germany", "Yes"): ("Customers in Germany respond better than customers in France or Spain.", ""),
+}
 
 INK, MUTED, GRID = "#1d2329", "#5f6770", "#e4e7eb"
 SEGMENT_COLORS = ["#104281", "#1c5cab", "#2a78d6", "#5598e7", "#9ec5f4"]
@@ -149,6 +165,24 @@ def capacity_table(summary):
             f"<th>Share of the total benefit</th></tr>{body}</table>"), kept, total
 
 
+def drivers_section(importance):
+    items = []
+    for r in importance.head(6).itertuples():
+        key = (r.feature, r.direction.split(" ")[0])
+        if key in INSIGHTS:
+            headline, detail = INSIGHTS[key]
+            items.append(f"<li><b>{headline}</b> {detail}</li>")
+    weak = [(l[0].lower() + l[1:]).replace("has a", "having a") for l in importance.tail(4)["label"]]
+    items.append(f"<li><b>Some things make almost no difference.</b> {', '.join(weak[:-1]).capitalize()} and "
+                 f"{weak[-1]} barely change how much a customer benefits, so they are not useful for "
+                 f"choosing who to contact.</li>")
+    return (f"<ul class='insights'>{''.join(items)}</ul>"
+            "<p class='note'>The ranked customer list (ranked_customers.csv) includes the two main reasons for "
+            "each customer's score, for example \"Inactive member, Engagement score 12/100\". These explain "
+            "why the model scored the customer the way it did. They are not proven causes of why a customer "
+            "stays or leaves.</p>")
+
+
 def model_chart(quintiles, selected):
     fig = go.Figure()
     labels = {4: "Top 20%", 3: "Next 20%", 2: "Middle 20%", 1: "Lower 20%", 0: "Bottom 20%"}
@@ -168,9 +202,10 @@ def check_consistency(ranked, summary, quintiles, groups, cust_groups, selected)
     counts = ranked["priority_segment"].value_counts()
     for row in summary.itertuples():
         assert counts[row.priority_segment] == row.n_customers, f"{row.priority_segment} count does not match"
-    sel = quintiles[quintiles["model_name"] == selected].sort_values("quintile", ascending=False)
-    assert (sel["observed_uplift"].round(6).values == summary["observed_uplift"].round(6).values).all(), \
-        "Segment chart does not match the model evaluation"
+    pred = pd.read_csv(FINAL_PATH if FINAL_PATH.exists() else OUTPUT_DIR / selected / "oof_predictions.csv")
+    q = um.quintile_table(pred["uplift_score"], pred["treatment"], pred["outcome"]).sort_values("quintile", ascending=False)
+    assert (q["observed_uplift"].round(6).values == summary["observed_uplift"].round(6).values).all(), \
+        "Segment chart does not match the model's scores"
     assert groups["n_customers"].sum() == len(ranked), "Benefit groups do not add up to all customers"
     for trait, g in cust_groups.groupby("trait"):
         assert g["n_customers"].sum() == len(ranked), f"{trait} groups do not add up to all customers"
@@ -201,6 +236,9 @@ def build_page(sections):
   th, td {{ text-align: left; padding: 9px 12px; border-bottom: 1px solid {GRID}; }}
   th {{ color: {MUTED}; font-weight: 600; font-size: 13px; }}
   td:not(:first-child), th:not(:first-child) {{ text-align: right; }}
+  .insights {{ margin: 6px 0 14px; padding-left: 20px; line-height: 1.6; font-size: 15px; color: {INK}; }}
+  .insights li {{ margin-bottom: 8px; }}
+  section p.note {{ font-size: 14px; margin-bottom: 16px; }}
 </style></head>
 <body><main>
 <h1>Who should the retention team contact?</h1>
@@ -249,6 +287,15 @@ def main():
          "Compared with the customer base as a whole, Priority 1 customers are more often inactive, older, based in "
          "Germany and holding a single product. This can help the retention team tailor the message.",
          priority1_profile(ranked)),
+    ]
+    if SHAP_PATH.exists():
+        sections.append((
+            "Why does the model pick these customers?",
+            "We used SHAP, a method that shows which customer traits drive each score. "
+            "These are the traits that matter most, from strongest to weakest.",
+            drivers_section(pd.read_csv(SHAP_PATH)),
+        ))
+    sections += [
         ("How many customers should we contact?",
          f"Each step down the priority list adds fewer extra customers. Contacting Priority 1 and 2 "
          f"({int(summary['cumulative_customers'].iloc[1]):,} customers) gets about {kept[1] / total:.0%} of the "
