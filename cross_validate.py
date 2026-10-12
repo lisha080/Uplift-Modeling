@@ -45,7 +45,7 @@ def make_folds(X, y, seed=RANDOM_SEED):
     return list(skf.split(X, strata))
 
 
-def run_cv(X, y, folds, scale_cols, feature_cols, model_type, verbose=True):
+def run_cv(X, y, folds, scale_cols, feature_cols, model_type, verbose=True, params=None):
     n = len(X)
     p_treated = np.full(n, np.nan)
     p_control = np.full(n, np.nan)
@@ -61,7 +61,7 @@ def run_cv(X, y, folds, scale_cols, feature_cols, model_type, verbose=True):
 
         with contextlib.redirect_stdout(io.StringIO()):  # silence per-fold prints
             m_treated, m_control, model_name = train_t_learner(
-                X_tr, y_tr, feature_cols, model_type=model_type
+                X_tr, y_tr, feature_cols, model_type=model_type, params=params
             )
 
         p_treated[test_pos] = m_treated.predict_proba(X_te[feature_cols])[:, 1]

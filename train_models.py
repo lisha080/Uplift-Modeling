@@ -1,4 +1,5 @@
 import json
+import warnings
 from pathlib import Path
  
 import numpy as np
@@ -35,40 +36,45 @@ def load_data():
 def get_feature_columns(X_train):
     return [col for col in X_train.columns if col != "treatment"]
  
-def train_t_learner(X_train, y_train, feature_cols, model_type="logistic"):
+def make_model(model_type, params=None):
+    """One classifier for the T-Learner. params=None gives the original Sprint 6/7 settings."""
+    params = params or {}
+    if model_type == "logistic":
+        if params.get("penalty") == "l1":
+            return LogisticRegression(C=params.get("C", 1.0), penalty="l1", solver="liblinear",
+                                      max_iter=1000, random_state=42)
+        return LogisticRegression(C=params.get("C", 1.0), max_iter=1000, random_state=42)
+    if model_type == "random_forest":
+        return RandomForestClassifier(
+            n_estimators=params.get("n_estimators", 200), max_depth=params.get("max_depth", 8),
+            min_samples_leaf=params.get("min_samples_leaf", 10), random_state=42, n_jobs=-1,
+        )
+    raise ValueError(f"Unsupported model_type: {model_type}")
+
+
+def train_t_learner(X_train, y_train, feature_cols, model_type="logistic", params=None):
     """Train two models: one on treated customers, one on control."""
     treated_mask = X_train["treatment"] == 1
     control_mask = X_train["treatment"] == 0
- 
+
     X_treated = X_train.loc[treated_mask, feature_cols]
     y_treated = y_train.loc[treated_mask]
     X_control = X_train.loc[control_mask, feature_cols]
     y_control = y_train.loc[control_mask]
- 
+
     print(f"  Treated training samples: {len(X_treated)}")
     print(f"  Control training samples: {len(X_control)}")
- 
-    if model_type == "logistic":
-        model_treated = LogisticRegression(max_iter=1000, random_state=42)
-        model_control = LogisticRegression(max_iter=1000, random_state=42)
-        model_name = "logistic_t_learner"
-    elif model_type == "random_forest":
-        model_treated = RandomForestClassifier(
-            n_estimators=200, max_depth=8, min_samples_leaf=10,
-            random_state=42, n_jobs=-1,
-        )
-        model_control = RandomForestClassifier(
-            n_estimators=200, max_depth=8, min_samples_leaf=10,
-            random_state=42, n_jobs=-1,
-        )
-        model_name = "random_forest_t_learner"
-    else:
-        raise ValueError(f"Unsupported model_type: {model_type}")
- 
-    model_treated.fit(X_treated, y_treated)
-    model_control.fit(X_control, y_control)
+
+    model_treated = make_model(model_type, params)
+    model_control = make_model(model_type, params)
+    model_name = f"{model_type}_t_learner"
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*penalty.*")  # newer scikit-learn warns about penalty="l1"
+        model_treated.fit(X_treated, y_treated)
+        model_control.fit(X_control, y_control)
     print(f"  Trained both models")
- 
+
     return model_treated, model_control, model_name
  
 def build_predictions(X_test, X_test_raw, y_test, model_treated, model_control, feature_cols):

@@ -9,6 +9,8 @@ from train_models import OUTPUT_DIR
 
 SYNTHETIC_PATH = Path("data/processed/synthetic_data.csv")
 RANK_DIR = OUTPUT_DIR / "ranking"
+FINAL_PATH = OUTPUT_DIR / "final_model" / "oof_predictions.csv"
+REASONS_PATH = OUTPUT_DIR / "shap" / "customer_reasons.csv"
 
 # quintile 4 = highest uplift -> Priority 1
 SEGMENTS = {
@@ -24,7 +26,10 @@ PROFILE_COLS = ["Geography", "Age", "Tenure", "Balance", "NumOfProducts", "IsAct
 
 def load_scores():
     selected = json.loads((OUTPUT_DIR / "selection_summary.json").read_text())["selected_model"]
-    pred = pd.read_csv(OUTPUT_DIR / selected / "oof_predictions.csv")
+    if FINAL_PATH.exists():
+        pred, selected = pd.read_csv(FINAL_PATH), f"{selected} (tuned, Sprint 8)"
+    else:
+        pred = pd.read_csv(OUTPUT_DIR / selected / "oof_predictions.csv")
 
     # customer_index is the row number in synthetic_data.csv
     syn = pd.read_csv(SYNTHETIC_PATH)
@@ -43,12 +48,17 @@ def build_ranked_list(pred):
     df["recommended_action"] = [SEGMENTS[q][1] for q in quintile]
     df["retention_with_outreach"] = df["p_treated"]
     df["retention_without_outreach"] = df["p_control"]
+    if REASONS_PATH.exists():
+        df = df.merge(pd.read_csv(REASONS_PATH), on="customer_index", how="left")
 
     df = df.sort_values("uplift_score", ascending=False).reset_index(drop=True)
     df["priority_rank"] = np.arange(1, len(df) + 1)
 
     cols = ["priority_rank", "CustomerId", "priority_segment", "recommended_action", "uplift_score",
-            "retention_with_outreach", "retention_without_outreach"] + PROFILE_COLS + ["treatment", "outcome"]
+            "retention_with_outreach", "retention_without_outreach"]
+    if "main_reasons" in df.columns:
+        cols.append("main_reasons")
+    cols += PROFILE_COLS + ["treatment", "outcome"]
     return df[cols]
 
 
