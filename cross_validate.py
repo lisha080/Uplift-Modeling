@@ -33,7 +33,7 @@ def get_scale_cols(X):
     return [c for c in X.select_dtypes(include=[np.number]).columns if c not in binary_cols]
 
 
-def make_folds(X, y):
+def make_folds(X, y, seed=RANDOM_SEED):
     """The single definition of the CV folds. Anything compared against the uplift
     models (e.g. the traditional baseline) must use these exact folds.
 
@@ -41,11 +41,11 @@ def make_folds(X, y):
     same retention mix in each arm.
     """
     strata = X["treatment"].astype(str) + "_" + y.astype(str)
-    skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_SEED)
+    skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=seed)
     return list(skf.split(X, strata))
 
 
-def run_cv(X, y, folds, scale_cols, feature_cols, model_type):
+def run_cv(X, y, folds, scale_cols, feature_cols, model_type, verbose=True):
     n = len(X)
     p_treated = np.full(n, np.nan)
     p_control = np.full(n, np.nan)
@@ -67,7 +67,8 @@ def run_cv(X, y, folds, scale_cols, feature_cols, model_type):
         p_treated[test_pos] = m_treated.predict_proba(X_te[feature_cols])[:, 1]
         p_control[test_pos] = m_control.predict_proba(X_te[feature_cols])[:, 1]
         fold_id[test_pos] = fold
-        print(f"    fold {fold + 1}/{len(folds)} done ({len(test_pos)} customers scored)")
+        if verbose:
+            print(f"    fold {fold + 1}/{len(folds)} done ({len(test_pos)} customers scored)")
 
     assert not np.isnan(p_treated).any(), "Some customers were never scored"
 
