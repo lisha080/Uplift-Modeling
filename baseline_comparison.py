@@ -184,6 +184,25 @@ def make_chart(table, path):
     return True
 
 
+def save_strategy_scores(scores, ref, t, o):
+    out = pd.DataFrame({
+        "customer_index": ref["customer_index"].values,
+        "treatment": t,
+        "outcome": o,
+        "churn_risk": scores[BASELINE_ALL],
+        "churn_risk_control_only": scores[BASELINE_CONTROL],
+    })
+    for label, model_name in UPLIFT_MODELS.items():
+        out[f"uplift_{model_name}"] = scores[label]
+    final_path = OUTPUT_DIR / "final_model" / "oof_predictions.csv"
+    if final_path.exists():
+        final = pd.read_csv(final_path)
+        if not (final["customer_index"].values == out["customer_index"].values).all():
+            raise ValueError(f"{final_path} is not aligned with cleaned_data.csv. Re-run check_final_model.py.")
+        out["uplift_final"] = final["uplift_score"].values
+    out.to_csv(OUTPUT_DIR / "strategy_scores.csv", index=False)
+
+
 # ---------------------------------------------------------------- main
 def main():
     df = pd.read_csv(CLEANED_PATH)
@@ -256,6 +275,7 @@ def main():
         print(f"    {v:5.0%}  {k}")
 
     OUTPUT_DIR.mkdir(exist_ok=True)
+    save_strategy_scores(scores, ref, t, o)
     table.to_csv(OUTPUT_DIR / "baseline_comparison.csv", index=False)
     profile.to_csv(OUTPUT_DIR / "baseline_selection_profile.csv", index=False)
     summary = {
@@ -269,7 +289,7 @@ def main():
     with open(OUTPUT_DIR / "baseline_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
     chart_ok = make_chart(table, OUTPUT_DIR / "baseline_comparison.png")
-    print("\nSaved: baseline_comparison.csv, baseline_selection_profile.csv, baseline_summary.json"
+    print("\nSaved: strategy_scores.csv, baseline_comparison.csv, baseline_selection_profile.csv, baseline_summary.json"
           + (", baseline_comparison.png" if chart_ok else ""))
 
 
