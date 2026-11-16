@@ -11,11 +11,15 @@ import pandas as pd
 
 import roi
 import uplift_metrics as um
-from dashboard_data import load_all
+from dashboard_data import explain_customer, filter_customers, load_all
 from targeting_comparison import compare
 from train_models import OUTPUT_DIR
 
 results = []
+
+
+def dollars(x):
+    return f"-${-x:,.0f}" if x < 0 else f"${x:,.0f}"
 
 
 def check(name, ok, detail=""):
@@ -58,6 +62,31 @@ def main():
     top_feature = recomputed.idxmax()
     check("top SHAP factor matches shap_values.csv", d.importance.iloc[0]["feature"] == top_feature, top_feature)
 
+    parts = d.shap.drop(columns=["customer_index", "uplift_score", "base_value"]).sum(axis=1) + d.shap["base_value"]
+    check("every customer's explanation adds up to the explained model's score",
+          np.allclose(parts.values, d.shap["uplift_score"].values, atol=1e-8))
+    merged = d.ranked.set_index("CustomerId").join(d.shap[["uplift_score"]], rsuffix="_explained")
+    gap = (merged["uplift_score"] - merged["uplift_score_explained"]).abs() * 100
+    corr = merged["uplift_score"].corr(merged["uplift_score_explained"])
+    check("explained model agrees with the ranking scores (correlation >= 0.95, average gap < 3 pts)",
+          corr >= 0.95 and gap.mean() < 3, f"correlation {corr:.3f}, average gap {gap.mean():.1f} pts")
+    top_id = int(d.ranked.iloc[0]["CustomerId"])
+    check("customer lookup explains the selected customer",
+          np.isclose(explain_customer(d, top_id)["uplift_pts"], d.shap.loc[top_id, "uplift_score"] * 100))
+
+    f = filter_customers(d.ranked, ["Priority 1", "Priority 2"], ["Germany"], "Inactive", "Responded", [1, 2], (40, 60))
+    r = d.ranked
+    manual = r[r.priority_segment.isin(["Priority 1", "Priority 2"]) & (r.Geography == "Germany") & (r.IsActiveMember == 0)
+               & (r.previous_campaign_response == 1) & r.NumOfProducts.isin([1, 2]) & r.Age.between(40, 60)]
+    check("filters return exactly the matching customers", set(f.CustomerId) == set(manual.CustomerId), f"{len(f):,}")
+    check("filtered list is re-ranked in overall rank order",
+          (f.rank_in_selection.values == np.arange(1, len(f) + 1)).all() and f.priority_rank.is_monotonic_increasing)
+
+    p1 = filter_customers(d.ranked, ["Priority 1"])
+    p1_net = p1.uplift_score.sum() * roi.RETENTION_VALUE - len(p1) * roi.CONTACT_COST
+    check("Priority 1 totals match the ROI simulator at 20% outreach",
+          np.isclose(p1_net, d.roi_table.set_index("outreach_share").loc[0.2, "predicted_net_benefit"]), dollars(p1_net))
+
     s = d.strategy_scores
     saved = d.roi_table.set_index("outreach_share")
     ok = True
@@ -89,6 +118,12 @@ def main():
               shown.get("Priority 1 uplift") == f"+{seg.loc['Priority 1', 'observed_uplift'] * 100:.1f} pts",
               shown.get("Priority 1 uplift"))
         best = saved["predicted_net_benefit"].idxmax()
+        check("dashboard has all three sections", len(app.tabs) == 3, ", ".join(t.label for t in app.tabs))
+        top = d.ranked.iloc[0]
+        page = " ".join(m.value for m in app.markdown)
+        check("customer detail shows the top customer by default",
+              f"Customer {int(top['CustomerId'])}" in page and f"{top['uplift_score'] * 100:+.1f} pts" in page,
+              f"{int(top['CustomerId'])}, {top['uplift_score'] * 100:+.1f} pts")
         check("dashboard recommended outreach matches saved ROI table",
               shown.get("Recommended outreach") == f"Top {best:.0%}", shown.get("Recommended outreach"))
     except ImportError:
